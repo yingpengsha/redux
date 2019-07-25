@@ -76,7 +76,7 @@ export default function isPlainObject(obj) {
 
 如下表所示：他们的判断结果
 
- - | Redux | Object.prototype.toString
+---| Redux | Object.prototype.toString
 ---|--- |---
 `__proto__`: `null` | ❌ |✅
 `__proto__`: { `__proto__`: `null`} | ✅ |✅
