@@ -42,6 +42,11 @@ const ActionTypes = {
 export default ActionTypes
 ```
 
+#### 生成三个 Redux 库自身使用的 actionType
+
+1. 前两个 actionType 是用于初始化用的，第三个是一次性使用的 actionType，每次调用都是独一无二的 action
+2. 之所以加上随机码，是为了防止和使用者自己定义的 actionType 一致而发生冲突。
+
 ## isPlainObject
 
 ```javascript

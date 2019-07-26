@@ -12,6 +12,9 @@ const randomString = () =>
     .split('')
     .join('.')
 
+// 生成两个初始化用的的 actionTypes
+// 之所以使用随机码放在后面，是为了防止和开发者自身定义的 actionType 一样而发生不可预知的结果
+// 而第三个生成的 actionType 是一次性使用的随机 actionType，即插即用，for one night 🍷
 const ActionTypes = {
   INIT: `@@redux/INIT${randomString()}`,
   REPLACE: `@@redux/REPLACE${randomString()}`,
