@@ -15,6 +15,43 @@ src
        ├─ isPlainObject.js
        └─ warning.js
 ```
+## compose
+
+```javascript
+/**
+ * Composes single-argument functions from right to left. The rightmost
+ * function can take multiple arguments as it provides the signature for
+ * the resulting composite function.
+ *
+ * @param {...Function} funcs The functions to compose.
+ * @returns {Function} A function obtained by composing the argument functions
+ * from right to left. For example, compose(f, g, h) is identical to doing
+ * (...args) => f(g(h(...args))).
+ */
+
+export default function compose(...funcs) {
+  if (funcs.length === 0) {
+    return arg => arg
+  }
+
+  if (funcs.length === 1) {
+    return funcs[0]
+  }
+
+  return funcs.reduce((a, b) => (...args) => a(b(...args)))
+}
+```
+#### compass 的作用就是整合多个 enhancer 函数
+
+1. 将传入的 enhancers 存储到数组 funcs 中
+2. 如果传入的 enhancer 实际个数是1个或者干脆没有，就直接返回，进行处理
+3. 利用 reduce 函数遍历一边 funcs 数组，每次将前一个函数的运行结果返回到后面一个函数的参数中
+4. 大体过程可以简单描述一下：
+   - 假设有三个增强函数 funcs: [one, two, three]
+   - 然后实际调用的效果为 three(two(one(args)))
+   - one(args) 返回 oneResult
+   - two(oneResult) 返回 twoResult
+   - three(twoResult) 返回 finalResult
 
 ## combineReducers
 
