@@ -4,16 +4,16 @@
 
 ```
 src
-├─ applyMiddleware.js
-├─ bindActionCreators.js
-├─ combineReducers.js
-├─ compose.js
-├─ createStore.js
+├─ applyMiddleware.js       // 将中间件函数封装成一个 enhancer
+├─ bindActionCreators.js    // 
+├─ combineReducers.js       // 组合多个 reducers 生成一个 reducer
+├─ compose.js               // 组合多个 enhancers 生成一个 enhancer
+├─ createStore.js           // 接收 reducer [, preloadedState] [, enhancer] 生成一个 store
 ├─ index.js
 └─ utils
-       ├─ actionTypes.js
-       ├─ isPlainObject.js
-       └─ warning.js
+       ├─ actionTypes.js    // 生成 redux 库自身所需的 actionType
+       ├─ isPlainObject.js  // 判断一个变量是否是普通对象
+       └─ warning.js        // 用于抛出错误的工具函数
 ```
 ## compose
 
@@ -42,6 +42,9 @@ export default function compose(...funcs) {
 }
 ```
 #### compass 的作用就是整合多个 enhancer 函数
+
+> 但实际上没有太多 redux 的内容在里面，把它视为一个🔧工具函数也是可以的
+> 比如借用这个思路来结合 HOC 来实现许多复杂的操作，不局限于此时此地
 
 1. 将传入的 enhancers 存储到数组 funcs 中
 2. 如果传入的 enhancer 实际个数是1个或者干脆没有，就直接返回，进行处理

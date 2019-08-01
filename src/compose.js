@@ -6,6 +6,9 @@
  * 因为 createStore 的 enhancers 只接收一个☝️ function
  * compose 的效果就是将多个 function 变成一个☝️ function
  * 
+ * 但实际上没有太多 redux 的内容在里面，把它视为一个🔧工具函数也是可以的
+ * 比如借用这个思路来结合 HOC 来实现许多复杂的操作，不局限于此时此地
+ * 
  * Composes single-argument functions from right to left. The rightmost
  * function can take multiple arguments as it provides the signature for
  * the resulting composite function.
