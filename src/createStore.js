@@ -29,6 +29,10 @@ import isPlainObject from './utils/isPlainObject'
  * and subscribe to changes.
  */
 export default function createStore(reducer, preloadedState, enhancer) {
+
+  // 判断传入的参数，当试图传入多个函数时，则报错。
+  // 实际场景是，当开发者试图传入多个 enhancer 后报错。
+  // arguments 是每一个函数中会自动生成的局部变量，以数组的形式存储传入的参数
   if (
     (typeof preloadedState === 'function' && typeof enhancer === 'function') ||
     (typeof enhancer === 'function' && typeof arguments[3] === 'function')
@@ -40,19 +44,26 @@ export default function createStore(reducer, preloadedState, enhancer) {
     )
   }
 
+  // 如果传入的参数中，preloadedState 为函数，enhancer 为空，则视开发者忽略了 preloadedState，直接传了 enhancer
+  // eg： createStore(reducer, enhancer)
   if (typeof preloadedState === 'function' && typeof enhancer === 'undefined') {
     enhancer = preloadedState
     preloadedState = undefined
   }
 
   if (typeof enhancer !== 'undefined') {
+    // 如果 enhancer 传入且不为函数时抛出错误。
     if (typeof enhancer !== 'function') {
       throw new Error('Expected the enhancer to be a function.')
     }
 
+    // 如果有增强函数，则返回增强函数强化过的 createStore 生成的结果
     return enhancer(createStore)(reducer, preloadedState)
   }
 
+  // 运行到这一步各种 enhancer 相关的操作已经结束
+
+  // reducer 不为函数时抛出错误
   if (typeof reducer !== 'function') {
     throw new Error('Expected the reducer to be a function.')
   }
@@ -69,6 +80,9 @@ export default function createStore(reducer, preloadedState, enhancer) {
    *
    * This prevents any bugs around consumers calling
    * subscribe/unsubscribe in the middle of a dispatch.
+   *
+   * 对监听事件集进行一次浅拷贝进行备份
+   * 确保可以更新监听事件集，而不至于被调用时的错误影响
    */
   function ensureCanMutateNextListeners() {
     if (nextListeners === currentListeners) {
@@ -78,10 +92,13 @@ export default function createStore(reducer, preloadedState, enhancer) {
 
   /**
    * Reads the state tree managed by the store.
+   * 读取数据
    *
    * @returns {any} The current state tree of your application.
    */
   function getState() {
+    // 如果 reducer 在执行的时候 isDispatching 会为 true
+    // 在 reducer 执行的时候时不能获取数据的
     if (isDispatching) {
       throw new Error(
         'You may not call store.getState() while the reducer is executing. ' +
@@ -117,10 +134,12 @@ export default function createStore(reducer, preloadedState, enhancer) {
    * @returns {Function} A function to remove this change listener.
    */
   function subscribe(listener) {
+    // 监听事件不为函数则抛出错误
     if (typeof listener !== 'function') {
       throw new Error('Expected the listener to be a function.')
     }
 
+    // 如果正在 reducer 则抛出错误
     if (isDispatching) {
       throw new Error(
         'You may not call store.subscribe() while the reducer is executing. ' +
@@ -130,16 +149,22 @@ export default function createStore(reducer, preloadedState, enhancer) {
       )
     }
 
+    // 确认监听
     let isSubscribed = true
 
+    // 备份监听集
     ensureCanMutateNextListeners()
+    // 添加事件到监听集中
     nextListeners.push(listener)
 
+    // 返回一个取消监听函数（闭包）
     return function unsubscribe() {
+      // 如果实际上未监听这直接结束
       if (!isSubscribed) {
         return
       }
 
+      // 如果正在 reducer 则无法进行取消，抛出错误。
       if (isDispatching) {
         throw new Error(
           'You may not unsubscribe from a store listener while the reducer is executing. ' +
@@ -147,8 +172,10 @@ export default function createStore(reducer, preloadedState, enhancer) {
         )
       }
 
+      // 取消监听
       isSubscribed = false
 
+      // 拷贝备份，然后将事件从监听集中删除
       ensureCanMutateNextListeners()
       const index = nextListeners.indexOf(listener)
       nextListeners.splice(index, 1)
@@ -182,6 +209,7 @@ export default function createStore(reducer, preloadedState, enhancer) {
    * return something else (for example, a Promise you can await).
    */
   function dispatch(action) {
+    // dispatch 只接收普通对象，如果不是则抛出错误。
     if (!isPlainObject(action)) {
       throw new Error(
         'Actions must be plain objects. ' +
@@ -189,6 +217,7 @@ export default function createStore(reducer, preloadedState, enhancer) {
       )
     }
 
+    // action 中必须携带 type，反之抛出错误
     if (typeof action.type === 'undefined') {
       throw new Error(
         'Actions may not have an undefined "type" property. ' +
@@ -196,10 +225,12 @@ export default function createStore(reducer, preloadedState, enhancer) {
       )
     }
 
+    // 这就是为什么说 redux 的操作时候同步的而非异步的，☝一个️ reducer 未结束是不能进行下一个的
     if (isDispatching) {
       throw new Error('Reducers may not dispatch actions.')
     }
 
+    // 进行 reducer，并标记正在 reducer，出错或者结束后结束 reducer。
     try {
       isDispatching = true
       currentState = currentReducer(currentState, action)
@@ -207,12 +238,14 @@ export default function createStore(reducer, preloadedState, enhancer) {
       isDispatching = false
     }
 
+    // reducer 结束后执行监听事件
     const listeners = (currentListeners = nextListeners)
     for (let i = 0; i < listeners.length; i++) {
       const listener = listeners[i]
       listener()
     }
 
+    // 返回 action 估计是为了方便开发者 debug？
     return action
   }
 
@@ -227,16 +260,20 @@ export default function createStore(reducer, preloadedState, enhancer) {
    * @returns {void}
    */
   function replaceReducer(nextReducer) {
+    // 如果新的 reducer 不为函数则报错
     if (typeof nextReducer !== 'function') {
       throw new Error('Expected the nextReducer to be a function.')
     }
 
+    // 替换当前的 reducer
     currentReducer = nextReducer
 
     // This action has a similiar effect to ActionTypes.INIT.
     // Any reducers that existed in both the new and old rootReducer
     // will receive the previous state. This effectively populates
     // the new state tree with any relevant data from the old one.
+    // 与 Action.INIT 类似，都是为了初始化数据用的，只不过一个是用默认数据填充，一个是旧数据
+    // 此处如果调用的是 Action.INIT，结果也是一样的
     dispatch({ type: ActionTypes.REPLACE })
   }
 
@@ -245,6 +282,7 @@ export default function createStore(reducer, preloadedState, enhancer) {
    * @returns {observable} A minimal observable of state changes.
    * For more information, see the observable proposal:
    * https://github.com/tc39/proposal-observable
+   * TODO: 这是嘛？干嘛的？
    */
   function observable() {
     const outerSubscribe = subscribe
@@ -263,7 +301,7 @@ export default function createStore(reducer, preloadedState, enhancer) {
         }
 
         function observeState() {
-          if (observer.next) {
+          if (observer.next) {  
             observer.next(getState())
           }
         }
@@ -282,6 +320,7 @@ export default function createStore(reducer, preloadedState, enhancer) {
   // When a store is created, an "INIT" action is dispatched so that every
   // reducer returns their initial state. This effectively populates
   // the initial state tree.
+  // 初始化 redux 数据
   dispatch({ type: ActionTypes.INIT })
 
   return {

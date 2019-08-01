@@ -4,31 +4,92 @@
 
 ```
 src
-├─ applyMiddleware.js       // 将中间件函数封装成一个 enhancer
+├─ applyMiddleware.js       // 组合多个 middleware 生成一个 enhancer
 ├─ bindActionCreators.js    // 
-├─ combineReducers.js       // 组合多个 reducers 生成一个 reducer
-├─ compose.js               // 组合多个 enhancers 生成一个 enhancer
-├─ createStore.js           // 接收 reducer [, preloadedState] [, enhancer] 生成一个 store
+├─ combineReducers.js       // 组合多个 reducer 生成一个 reducer
+├─ compose.js               // 组合多个 enhancer 生成一个 enhancer (一个将一堆函数首尾相连的🔧工具函数)
+├─ createStore.js           // 接收 reducer[, preloadedState][, enhancer] 生成一个 store
 ├─ index.js
 └─ utils
        ├─ actionTypes.js    // 生成 redux 库自身所需的 actionType
        ├─ isPlainObject.js  // 判断一个变量是否是普通对象
        └─ warning.js        // 用于抛出错误的工具函数
 ```
+## applyMiddleware
+
+```javascript
+import compose from './compose'
+export default function applyMiddleware(...middlewares) {
+  return createStore => (...args) => {
+    const store = createStore(...args)
+    let dispatch = () => {
+      throw new Error(
+        'Dispatching while constructing your middleware is not allowed. ' +
+          'Other middleware would not be applied to this dispatch.'
+      )
+    }
+
+    const middlewareAPI = {
+      getState: store.getState,
+      dispatch: (...args) => dispatch(...args)
+    }
+    const chain = middlewares.map(middleware => middleware(middlewareAPI))
+    dispatch = compose(...chain)(store.dispatch)
+
+    return {
+      ...store,
+      dispatch
+    }
+  }
+}
+```
+
+结合一下 redux-thunk 的源码看一下
+
+```javascript
+function createThunkMiddleware(extraArgument) {
+  return ({ dispatch, getState }) => next => action => {
+    if (typeof action === 'function') {
+      return action(dispatch, getState, extraArgument);
+    }
+
+    return next(action);
+  };
+}
+
+const thunk = createThunkMiddleware();
+thunk.withExtraArgument = createThunkMiddleware;
+
+export default thunk;
+```
+
+#### 组合多个 middleware 生成一个 enhancer，中间件会替换 dispatch 给用户使用，而真正的 dispatch 则在中间件的末尾等待最后的处理。
+
+1. applyMiddleware 执行后会返回一个 enhancer
+2. 然后这个 enhancer 会返回一个 dispatch 覆盖原先的 dispatch
+3. createStore 就是最初始的 createStore 函数
+4. 定义的 dispatch 定义只是暂时的，最后会被中间件覆盖，目的是告诉中间件: v"正在初始化呢，别🐒急着dispatch!" <br>
+   相关 Issues: https://github.com/reduxjs/redux/issues/1240 很精彩
+5. 然后传递 getState，dispatch 给中间件使用
+6. 倒数第二行覆盖 dispatch 是整个库里最精彩的地方 <br>
+   1⃣️ dispatch 的不简单覆盖
+   - 上方的 dispatch 覆盖了上上方的报错专用的 dispatch
+   - 同时利用闭包的属性，覆盖了传到 middleware 里面的 middlewareAPI.dispatch 里的 dispatch
+   - 这样就能保证在最后的 dispatch 生成之前 dispatch 是报错专用的，生成之后是正常中间件生成用的 
+  
+   2⃣️ 怎么让 action 在中间件之间传递，最后传递到 store.dispatch 手上
+   - 假设我们有两个中间件 saga, thunk
+   - 他们都有会生成一个类似 dispatch 的函数，假设为 createSagaDispatch, createThunkDispatch
+   - 然后 compose(createSagaDispatch, createThunkDispatch)(store.dispatch)
+   - 等于 createThunkDispatch(createSagaDispatch(store.dispatch))
+   - 效果 createSagaDispatch(store.dispatch) --> sagaDispatch <br>
+        createThunkDispatch(sagaDispatch) --> thunkDispatch
+   - 最后将 thunkDispatch 暴露给用户
+   - 执行顺序则是反方向运行回调的函数
+7. 最后返回意味着暴露给用户的 dispatch 将会被中间件覆盖，而真正的 dispatch 给最里层的中间件用
 ## compose
 
 ```javascript
-/**
- * Composes single-argument functions from right to left. The rightmost
- * function can take multiple arguments as it provides the signature for
- * the resulting composite function.
- *
- * @param {...Function} funcs The functions to compose.
- * @returns {Function} A function obtained by composing the argument functions
- * from right to left. For example, compose(f, g, h) is identical to doing
- * (...args) => f(g(h(...args))).
- */
-
 export default function compose(...funcs) {
   if (funcs.length === 0) {
     return arg => arg
@@ -43,8 +104,8 @@ export default function compose(...funcs) {
 ```
 #### compass 的作用就是整合多个 enhancer 函数
 
-> 但实际上没有太多 redux 的内容在里面，把它视为一个🔧工具函数也是可以的
-> 比如借用这个思路来结合 HOC 来实现许多复杂的操作，不局限于此时此地
+> 但实际上没有太多 redux 的内容在里面，但他是中间件模式的核心函数，把它视为一个🔧工具函数也是可以的 <br/>
+> 比如借用这个思路来结合 HOC 来实现许多复杂的操作，不局限于此时此地，
 
 1. 将传入的 enhancers 存储到数组 funcs 中
 2. 如果传入的 enhancer 实际个数是1个或者干脆没有，就直接返回，进行处理
@@ -59,42 +120,12 @@ export default function compose(...funcs) {
 ## combineReducers
 
 ```javascript
-/**
- * Turns an object whose values are different reducer functions, into a single
- * reducer function. It will call every child reducer, and gather their results
- * into a single state object, whose keys correspond to the keys of the passed
- * reducer functions.
- *
- * @param {Object} reducers An object whose values correspond to different
- * reducer functions that need to be combined into one. One handy way to obtain
- * it is to use ES6 `import * as reducers` syntax. The reducers may never return
- * undefined for any action. Instead, they should return their initial state
- * if the state passed to them was undefined, and the current state for any
- * unrecognized action.
- *
- * @returns {Function} A reducer function that invokes every reducer inside the
- * passed object, and builds a state object with the same shape.
- */
 export default function combineReducers(reducers) {
   const reducerKeys = Object.keys(reducers)
   const finalReducers = {}
-  for (let i = 0; i < reducerKeys.length; i++) {
-    const key = reducerKeys[i]
+  
+  ...数据过滤及相关报错，最后 finalReducers 为有效的 reducers 集合
 
-    if (process.env.NODE_ENV !== 'production') {
-      if (typeof reducers[key] === 'undefined') {
-        warning(`No reducer provided for key "${key}"`)
-      }
-    }
-
-    if (typeof reducers[key] === 'function') {
-      finalReducers[key] = reducers[key]
-    }
-  }
-  const finalReducerKeys = Object.keys(finalReducers)
-
-  // This is used to make sure we don't warn about the same
-  // keys multiple times.
   let unexpectedKeyCache
   if (process.env.NODE_ENV !== 'production') {
     unexpectedKeyCache = {}
@@ -157,13 +188,6 @@ export default function combineReducers(reducers) {
 ## actionTypes
 
 ```javascript
-/**
- * These are private action types reserved by Redux.
- * For any unknown actions, you must return the current state.
- * If the current state is undefined, you must return the initial state.
- * Do not reference these action types directly in your code.
- */
-
 const randomString = () =>
   Math.random()
     .toString(36)
@@ -188,10 +212,6 @@ export default ActionTypes
 ## isPlainObject
 
 ```javascript
-/**
- * @param {any} obj The object to inspect.
- * @returns {boolean} True if the argument appears to be a plain object.
- */
 export default function isPlainObject(obj) {
   if (typeof obj !== 'object' || obj === null) return false
 
