@@ -12,6 +12,7 @@ import __DO_NOT_USE__ActionTypes from './utils/actionTypes'
  */
 function isCrushed() {}
 
+// 主要判断在非生产环境里是否被压缩了，如果被压缩了则抛出错误
 if (
   process.env.NODE_ENV !== 'production' &&
   typeof isCrushed.name === 'string' &&
