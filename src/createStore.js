@@ -150,6 +150,7 @@ export default function createStore(reducer, preloadedState, enhancer) {
     }
 
     // 确认监听
+    // 因为闭包的原因，所以每个监听函数都有独属的 isSubscribed
     let isSubscribed = true
 
     // 备份监听集
@@ -282,8 +283,9 @@ export default function createStore(reducer, preloadedState, enhancer) {
    * @returns {observable} A minimal observable of state changes.
    * For more information, see the observable proposal:
    * https://github.com/tc39/proposal-observable
-   * TODO: 这是嘛？干嘛的？
    */
+  // observable 这个函数不是暴露给使用者的，而是提供给其他观察者模式/响应式库的 API
+  // 具体可看 https://github.com/tc39/proposal-observable
   function observable() {
     const outerSubscribe = subscribe
     return {

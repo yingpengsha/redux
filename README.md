@@ -15,6 +15,171 @@ src
        ├─ isPlainObject.js  // 判断一个变量是否是普通对象
        └─ warning.js        // 用于抛出错误的工具函数
 ```
+## createStore
+```javascript
+import $$observable from 'symbol-observable'
+
+import ActionTypes from './utils/actionTypes'
+import isPlainObject from './utils/isPlainObject'
+
+export default function createStore(reducer, preloadedState, enhancer) {
+  
+  // ...各种参数校验
+
+  if (typeof enhancer !== 'undefined') {
+    if (typeof enhancer !== 'function') {
+      throw new Error('Expected the enhancer to be a function.')
+    }
+    return enhancer(createStore)(reducer, preloadedState)
+  }
+
+  // ...参数校验
+
+  let currentReducer = reducer
+  let currentState = preloadedState
+  let currentListeners = []
+  let nextListeners = currentListeners
+  let isDispatching = false
+
+  function ensureCanMutateNextListeners() {
+    if (nextListeners === currentListeners) {
+      nextListeners = currentListeners.slice()
+    }
+  }
+
+  function getState() {
+    // ...如果正在 dispatch，抛错
+
+    return currentState
+  }
+
+  function subscribe(listener) {
+    // ...参数校验，时机检查
+
+    let isSubscribed = true
+
+    ensureCanMutateNextListeners()
+    nextListeners.push(listener)
+
+    return function unsubscribe() {
+      if (!isSubscribed) {
+        return
+      }
+
+      // ...如果正在 dispatch，抛错
+
+      isSubscribed = false
+
+      ensureCanMutateNextListeners()
+      const index = nextListeners.indexOf(listener)
+      nextListeners.splice(index, 1)
+      currentListeners = null
+    }
+  }
+
+  function dispatch(action) {
+    // ...各种参数校验，时机检查
+
+    try {
+      isDispatching = true
+      currentState = currentReducer(currentState, action)
+    } finally {
+      isDispatching = false
+    }
+
+    const listeners = (currentListeners = nextListeners)
+    for (let i = 0; i < listeners.length; i++) {
+      const listener = listeners[i]
+      listener()
+    }
+
+    return action
+  }
+
+  function replaceReducer(nextReducer) {
+
+    // ...参数校验
+
+    currentReducer = nextReducer
+
+    dispatch({ type: ActionTypes.REPLACE })
+  }
+
+  function observable() {
+    const outerSubscribe = subscribe
+    return {
+      subscribe(observer) {
+        // ...参数校验
+
+        function observeState() {
+          if (observer.next) {
+            observer.next(getState())
+          }
+        }
+
+        observeState()
+        const unsubscribe = outerSubscribe(observeState)
+        return { unsubscribe }
+      },
+
+      [$$observable]() {
+        return this
+      }
+    }
+  }
+
+  dispatch({ type: ActionTypes.INIT })
+
+  return {
+    dispatch,
+    subscribe,
+    getState,
+    replaceReducer,
+    [$$observable]: observable
+  }
+}
+```
+1. 如果有 enhancer 增强函数则，调用增强后的 createStore 初始化
+2. 利用闭包的原理，保存各类变量的状态
+3. 定义各类函数暴露给用户使用
+4. 初始化
+
+### getState()
+
+用于返回 state
+
+1. 因为闭包，所以能准确的返回先前保留的 state
+
+### subscribe
+
+用于添加监听函数
+
+1. 对先前的监听函数集合进行浅拷贝备份
+2. 然后将新的监听函数填充进去
+3. 返回一个取消监听的函数
+   1. 浅拷贝备份
+   2. 将监听事件从集合中剔除
+
+### dispatch
+
+分发 action
+
+1. 将 action 分发到当前的 reducer 中（真正的改值在 reducer 中）
+2. 遍历监听函数，并执行
+3. 返回传入的 action (并无太多实际意义)
+
+### replaceReducer
+
+重置覆盖 reducer
+
+1. 覆盖当前 reducer
+2. 重新初始化状态
+
+### observable
+
+observable 这个函数不是暴露给使用者的，而是提供给其他观察者模式/响应式库的 API
+具体可看 https://github.com/tc39/proposal-observable
+
 ## applyMiddleware
 
 ```javascript
@@ -108,8 +273,8 @@ export default function compose(...funcs) {
 > 但实际上没有太多 redux 的内容在里面，但他是中间件模式的核心函数，把它视为一个🔧工具函数也是可以的 <br/>
 > 比如借用这个思路来结合 HOC 来实现许多复杂的操作，不局限于此时此地，
 
-1. 将传入的 enhancers 存储到数组 funcs 中
-2. 如果传入的 enhancer 实际个数是1个或者干脆没有，就直接返回，进行处理
+1. 将传入的 函数 存储到数组 funcs 中
+2. 如果传入的 函数 实际个数是1个或者干脆没有，就直接返回，进行处理
 3. 利用 reduce 函数遍历一边 funcs 数组，每次将前一个函数的运行结果返回到后面一个函数的参数中
 4. 大体过程可以简单描述一下：
    - 假设有三个增强函数 funcs: [one, two, three]
@@ -125,7 +290,7 @@ export default function combineReducers(reducers) {
   const reducerKeys = Object.keys(reducers)
   const finalReducers = {}
   
-  ...数据过滤及相关报错，最后 finalReducers 为有效的 reducers 集合
+  // ...数据过滤及相关报错，最后 finalReducers 为有效的 reducers 集合
 
   let unexpectedKeyCache
   if (process.env.NODE_ENV !== 'production') {
@@ -193,18 +358,7 @@ function bindActionCreator(actionCreator, dispatch) {
 }
 
 export default function bindActionCreators(actionCreators, dispatch) {
-  if (typeof actionCreators === 'function') {
-    return bindActionCreator(actionCreators, dispatch)
-  }
-
-  if (typeof actionCreators !== 'object' || actionCreators === null) {
-    throw new Error(
-      `bindActionCreators expected an object or a function, instead received ${
-        actionCreators === null ? 'null' : typeof actionCreators
-      }. ` +
-        `Did you write "import ActionCreators from" instead of "import * as ActionCreators from"?`
-    )
-  }
+  // ...参数校验
 
   const boundActionCreators = {}
   for (const key in actionCreators) {
@@ -262,7 +416,6 @@ export default function isPlainObject(obj) {
 
   return Object.getPrototypeOf(obj) === proto
 }
-
 ```
 
 #### 目的是判断一个变量是否为**普通对象**
