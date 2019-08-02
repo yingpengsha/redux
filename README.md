@@ -5,7 +5,7 @@
 ```
 src
 ├─ applyMiddleware.js       // 组合多个 middleware 生成一个 enhancer
-├─ bindActionCreators.js    // 
+├─ bindActionCreators.js    // 一个提供给使用者的工具函数，绑定 dispatch 和 actionCreator
 ├─ combineReducers.js       // 组合多个 reducer 生成一个 reducer
 ├─ compose.js               // 组合多个 enhancer 生成一个 enhancer (一个将一堆函数首尾相连的🔧工具函数)
 ├─ createStore.js           // 接收 reducer[, preloadedState][, enhancer] 生成一个 store
@@ -44,7 +44,7 @@ export default function applyMiddleware(...middlewares) {
 }
 ```
 
-结合一下 redux-thunk 的源码看一下
+来结合一下 redux-thunk 的源码看一下
 
 ```javascript
 function createThunkMiddleware(extraArgument) {
@@ -84,9 +84,10 @@ export default thunk;
    - 等于 createThunkDispatch(createSagaDispatch(store.dispatch))
    - 效果 createSagaDispatch(store.dispatch) --> sagaDispatch <br>
         createThunkDispatch(sagaDispatch) --> thunkDispatch
-   - 最后将 thunkDispatch 暴露给用户
+   - 最后将 thunkDispatch 暴露给使用者
    - 执行顺序则是反方向运行回调的函数
 7. 最后返回意味着暴露给用户的 dispatch 将会被中间件覆盖，而真正的 dispatch 给最里层的中间件用
+
 ## compose
 
 ```javascript
@@ -183,7 +184,46 @@ export default function combineReducers(reducers) {
 5. 当调用了 combination，一般就是 dispatch，createStore 的时候，在非生产环境会先进行合法性校验，如果发现有不合法的地方，抛出错误。
 6. 然后把传入的 action 传入到每一个子 reducer 里运行，得到新的 state，然后将每个子 state tree 整合起来返回。
 
+## bindActionCreators
+```javascript
+function bindActionCreator(actionCreator, dispatch) {
+  return function() {
+    return dispatch(actionCreator.apply(this, arguments))
+  }
+}
 
+export default function bindActionCreators(actionCreators, dispatch) {
+  if (typeof actionCreators === 'function') {
+    return bindActionCreator(actionCreators, dispatch)
+  }
+
+  if (typeof actionCreators !== 'object' || actionCreators === null) {
+    throw new Error(
+      `bindActionCreators expected an object or a function, instead received ${
+        actionCreators === null ? 'null' : typeof actionCreators
+      }. ` +
+        `Did you write "import ActionCreators from" instead of "import * as ActionCreators from"?`
+    )
+  }
+
+  const boundActionCreators = {}
+  for (const key in actionCreators) {
+    const actionCreator = actionCreators[key]
+    if (typeof actionCreator === 'function') {
+      boundActionCreators[key] = bindActionCreator(actionCreator, dispatch)
+    }
+  }
+  return boundActionCreators
+}
+```
+
+#### 一个提供给使用者的工具函数，用于将 dispatch 和 actionCreate 绑定，返回新的函数以供使用
+
+1. actionCreators 一个 action creator，或者一个 value 是 action creator 的对象。
+2. dispatch 一个由 Store 实例提供的 dispatch 函数
+3. 如果 actionCreators 是函数，则说明传进来的只有一个 creator,直接返回将两者绑定的函数
+4. 如果传进来的 actionCreators 不是函数，也不是对象，或者干脆为空则直接抛出错误
+5. 既然传进来的是一个 value 是 action creator 的对象，那就遍历一边，把里面每个 creator 覆盖为新的绑定过的 creator
 
 ## actionTypes
 

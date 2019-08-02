@@ -1,4 +1,5 @@
 function bindActionCreator(actionCreator, dispatch) {
+  // 返回一个将两者绑定的函数，顺便把到时候的运行上下文和参数传给creator
   return function() {
     return dispatch(actionCreator.apply(this, arguments))
   }
@@ -26,10 +27,15 @@ function bindActionCreator(actionCreator, dispatch) {
  * function.
  */
 export default function bindActionCreators(actionCreators, dispatch) {
+  // actionCreators 一个 action creator，或者一个 value 是 action creator 的对象。
+  // dispatch 一个由 Store 实例提供的 dispatch 函数
+
+  // 如果是函数，则说明传进来的只有一个 creator,直接返回将两者绑定的函数
   if (typeof actionCreators === 'function') {
     return bindActionCreator(actionCreators, dispatch)
   }
 
+  // 如果传进来的 actionCreators 不是函数，也不是对象，或者干脆为空则直接抛出错误
   if (typeof actionCreators !== 'object' || actionCreators === null) {
     throw new Error(
       `bindActionCreators expected an object or a function, instead received ${
@@ -39,6 +45,7 @@ export default function bindActionCreators(actionCreators, dispatch) {
     )
   }
 
+  // 既然传进来的是一个 value 是 action creator 的对象，那就遍历一边，把里面每个 creator 覆盖为新的绑定过的 creator
   const boundActionCreators = {}
   for (const key in actionCreators) {
     const actionCreator = actionCreators[key]
@@ -46,5 +53,23 @@ export default function bindActionCreators(actionCreators, dispatch) {
       boundActionCreators[key] = bindActionCreator(actionCreator, dispatch)
     }
   }
+
+  // 返回新的 action creator 组成的对象
   return boundActionCreators
+}
+
+// actionCreators 示例
+
+function addTodo(text) {
+  return {
+    type: 'ADD_TODO',
+    text
+  }
+}
+
+function removeTodo(id) {
+  return {
+    type: 'REMOVE_TODO',
+    id
+  }
 }
